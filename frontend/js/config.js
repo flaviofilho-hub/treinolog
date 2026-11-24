@@ -6,7 +6,16 @@ const KEY_KEY = "treinolog.api_key";
 export const DEFAULT_API_BASE = "";
 export const DEFAULT_API_KEY = "";
 
-// Verifica se já temos a chave salva. Se não, mostra o modal de configuração.
+// Verifica se o ambiente é nativo (Android/Capacitor). No web, sempre retorna false.
+export function isNativePlatform() {
+  return Boolean(window.Capacitor?.isNativePlatform?.());
+}
+
+// Função auxiliar para normalizar URLs
+export function normalizeBase(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
 export function getApiBase() {
   const stored = localStorage.getItem(BASE_KEY);
   if (stored !== null) return normalizeBase(stored);
@@ -18,12 +27,8 @@ export function getApiKey() {
   return stored !== null ? stored : DEFAULT_API_KEY;
 }
 
-export function normalize(value) {
-  return String(value || "").trim().replace(/\/+$/, "");
-}
-
 export function saveSettings(base, key) {
-  localStorage.setItem(BASE_KEY, normalize(base));
+  localStorage.setItem(BASE_KEY, normalizeBase(base));
   localStorage.setItem(KEY_KEY, String(key || "").trim());
   window.dispatchEvent(new Event("settings:changed"));
 }
