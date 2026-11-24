@@ -1,9 +1,8 @@
 import {
   getApiBase,
   getApiKey,
-  isNativePlatform,
-  resetSettings,
   saveSettings,
+  resetSettings,
 } from "./config.js";
 import { esc, icons, openModal, toast } from "./ui.js";
 import { render } from "./router.js";
@@ -13,52 +12,40 @@ function normalize(value) {
 }
 
 export function openSettingsModal({ firstRun = false } = {}) {
-  const base = getApiBase();
   const key = getApiKey();
 
   const modal = openModal(
     `<div class="page-head" style="margin-bottom:14px">
-       <div>
-         <p class="eyebrow">Conexão</p>
-         <h2>Ajustes</h2>
-       </div>
-     </div>
-     <form id="settings-form" class="stack-sm">
-       <label class="field">
-         <span>Endereço da API</span>
-         <input class="input" id="api-base" type="url" inputmode="url"
-           placeholder="https://seu-servidor.com"
-           value="${esc(base)}" autocomplete="off" />
-       </label>
-       <label class="field">
-         <span>Chave de API</span>
-         <input class="input" id="api-key" type="password"
-           placeholder="X-API-Key" value="${esc(key)}" autocomplete="off" />
-       </label>
-       <div class="modal-note">
-         ${
-           isNativePlatform()
-             ? "No aplicativo, informe a URL pública do servidor Flask. A chave é a mesma definida na variável <strong>API_KEY</strong>."
-             : "No navegador, deixe o endereço vazio para usar o mesmo servidor que abriu esta página."
-         }
-       </div>
-       <div class="settings-status" id="settings-status"></div>
-       <button type="button" class="btn btn-ghost btn-sm" id="test-connection">
-         ${icons.refresh} Testar conexão
-       </button>
-       <div class="modal-actions">
-         <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
-         <button type="submit" class="btn btn-primary">Salvar</button>
-       </div>
-       <button type="button" class="btn btn-ghost btn-sm" id="reset-settings">
-         Restaurar padrão
-       </button>
-     </form>`,
+        <div>
+          <p class="eyebrow">Conexão</p>
+          <h2>Ajustes</h2>
+        </div>
+      </div>
+      <form id="settings-form" class="stack-sm">
+        <label class="field">
+          <span>Chave de API</span>
+          <input class="input" id="api-key" type="password"
+            placeholder="X-API-Key" value="${esc(key)}" autocomplete="off" />
+        </label>
+        <div class="modal-note">
+          Informe a chave de API que você usa no seu servidor. Sem a chave, o app bloqueia as requisições.
+        </div>
+        <div class="settings-status" id="settings-status"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="test-connection">
+          ${icons.refresh} Testar conexão
+        </button>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="reset-settings">
+          Restaurar padrão
+        </button>
+      </form>`,
     { onClose: () => {} }
   );
 
   const form = modal.root.querySelector("#settings-form");
-  const baseInput = modal.root.querySelector("#api-base");
   const keyInput = modal.root.querySelector("#api-key");
   const status = modal.root.querySelector("#settings-status");
 
@@ -68,28 +55,21 @@ export function openSettingsModal({ firstRun = false } = {}) {
   }
 
   async function testConnection() {
-    const baseValue = normalize(baseInput.value);
     const keyValue = keyInput.value.trim();
 
-    if (isNativePlatform() && !baseValue) {
-      setStatus("Informe o endereço da API.", "var(--danger)");
-      return;
-    }
-
-    if (isNativePlatform() && /^http:\/\//i.test(baseValue)) {
-      setStatus(
-        "Use uma URL HTTPS. O Android bloqueia conexões HTTP no aplicativo.",
-        "var(--warning)"
-      );
+    if (!keyValue) {
+      setStatus("Informe a chave de API.", "var(--danger)");
       return;
     }
 
     setStatus("Testando…", "var(--muted)");
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(`${baseValue}/api/exercicios`, {
+      const base = window.location.origin; // mesma origem da página
+      const response = await fetch(`${base}/api/exercicios`, {
         headers: keyValue ? { "X-API-Key": keyValue } : {},
         signal: controller.signal,
       });
@@ -110,7 +90,7 @@ export function openSettingsModal({ firstRun = false } = {}) {
       const message =
         error.name === "AbortError"
           ? "Tempo esgotado."
-          : "Não foi possível conectar. Verifique a URL e a internet.";
+          : "Não foi possível conectar. Verifique a internet e o servidor.";
       setStatus(message, "var(--danger)");
     } finally {
       clearTimeout(timeout);
@@ -123,14 +103,13 @@ export function openSettingsModal({ firstRun = false } = {}) {
 
   modal.root.querySelector("#reset-settings").addEventListener("click", () => {
     resetSettings();
-    baseInput.value = "";
     keyInput.value = "";
     setStatus("Configuração restaurada.", "var(--muted)");
   });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    saveSettings(baseInput.value, keyInput.value);
+    saveSettings("", keyInput.value);
     toast("Ajustes salvos.");
     modal.close();
     if (firstRun) {
@@ -140,5 +119,5 @@ export function openSettingsModal({ firstRun = false } = {}) {
     }
   });
 
-  baseInput.focus({ preventScroll: true });
+  keyInput.focus({ preventScroll: true });
 }

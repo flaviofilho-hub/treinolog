@@ -2,25 +2,23 @@
 
 Painel pessoal para registrar treinos, séries, repetições e carga — e acompanhar a evolução por exercício com gráficos.
 
-- **Backend:** Flask + SQLite + Flask-SQLAlchemy (API JSON)
+- **Backend:** Flask + SQLAlchemy (PostgreSQL via Neon ou SQLite local)
 - **Frontend:** SPA em HTML/CSS/JS puro + Chart.js (vendorizado, sem CDN)
-- **App:** Android via Capacitor (WebView) com fila offline
+- **Hospedagem:** Render (Free/Starter) + Neon Postgres (Free)
 - **Autenticação:** chave compartilhada `X-API-Key` (uso pessoal)
+- **App:** Progressive Web App (PWA) — adicionar à tela inicial do celular, sem APK
 
 ## Estrutura
 
 ```
 app/                  backend Flask (modelos, rotas, auth)
-frontend/             SPA servida pelo Flask e empacotada no APK
+frontend/             SPA servida pelo Flask
 tests/                testes da API com pytest
-android/              projeto Android gerado pelo Capacitor
-assets/               ícone e splash de origem (gerados)
 instance/             SQLite local (ignorado no git)
 seed.py               catálogo inicial de exercícios
 wsgi.py               ponto de entrada WSGI
 run.py                servidor local de desenvolvimento
-Dockerfile            deploy em Fly.io / Render
-Procfile              deploy em Railway
+render.yaml           blueprint do Render
 ```
 
 ## Rodando localmente
@@ -32,12 +30,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python seed.py
-flask --app wsgi run --debug
+python wsgi.py
 ```
 
 Abra `http://127.0.0.1:5000`.
 
-Para popular dados de exemplo, registre um treino pela interface. O banco fica em `instance/treinolog.db`.
+Para popular dados de exemplo, registre um treino pela interface. O banco fica em `instance/treinolog.db` (SQLite) ou na instância do Neon (Postgres).
 
 ### Testes
 
@@ -51,9 +49,9 @@ Variáveis de ambiente (veja `.env.example`; `python-dotenv` carrega `.env`):
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `API_KEY` | vazio | Se definida, todas as rotas `/api` exigem `X-API-Key`. **Defina em produção.** |
-| `DATABASE_URL` | `sqlite:///instance/treinolog.db` | Use caminho absoluto no servidor. |
-| `CORS_ORIGINS` | `https://localhost,capacitor://localhost,...` | Origens permitidas para o WebView. |
+| `API_KEY` | vazia | Se definida, todas as rotas `/api` exigem `X-API-Key`. **Defina em produção.** |
+| `DATABASE_URL` | `sqlite:///instance/treinolog.db` | Use `postgresql+psycopg://...` para Neon. Caminho absoluto no servidor. |
+| `CORS_ORIGINS` | `https://localhost,http://localhost:5000,...` | Origens permitidas. |
 
 Gerar uma chave forte:
 
@@ -75,6 +73,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 | DELETE | `/api/treinos/<id>` | Remove treino |
 | GET | `/api/estatisticas` | Totais, últimos treinos e recordes |
 | GET | `/api/progresso/<exercise_id>?de=&ate=` | Carga máxima, volume e 1RM estimado por data |
+| GET | `/api/status` | Status do servidor e conexão com o banco |
 
 Exemplo de criação de treino:
 
@@ -92,146 +91,75 @@ Exemplo de criação de treino:
 }
 ```
 
-O `client_id` é gerado no aparelho e garante que um reenvio da fila offline não duplique o treino (resposta `200` com o registro existente em vez de `201`).
+O `client_id` é gerado no navegador e garante que um reenvio da fila offline não duplique o treino (resposta `200` com o registro existente em vez de `201`).
 
-## App Android
+## PWA (Progressive Web App)
 
-Pré-requisitos no computador: **Node 22+**, **JDK 21** e **Android SDK 36** (via Android Studio ou command-line tools). O Capacitor 8 não compila com Java 8.
+O site pode ser **adicionado à tela inicial** do celular, funcionando como um aplicativo nativo:
 
-```powershell
-npm install
-npx cap sync
-npx cap open android
-```
+- Ícones e manifesto (`manifest.webmanifest`) já inclusos.
+- Service Worker (`sw.js`) em cache: HTML, CSS, JS, Chart.js, ícones.
+- Requisições `/api/*` sempre vão para a rede (sem cache de dados).
+- Navegação offline cai na página shell em cache.
+- Estratégia *stale-while-revalidate* para arquivos estáticos.
+- O service worker é registrado automaticamente em HTTPS (produção) ou localhost (desenvolvimento).
 
-No Android Studio: **Build → Build Bundle(s)/APK(s) → Build APK(s)**. O APK de debug fica em `android/app/build/outputs/apk/debug/app-debug.apk`.
+### Como instalar no celular
 
-Para gerar um APK de release assinado, crie um keystore e configure `android/keystore.properties` (não versione esse arquivo).
+1. Abra o site no navegador do celular (Chrome ou Edge).
+2. No menu do navegador, toque em **"Adicionar à tela inicial"** (ou "Instalar app").
+3. Confirme o nome **treinolog** e o ícone.
+4. O ícone aparecerá na tela do celular — toque para abrir o app.
 
-### Build por linha de comando
+**Funcionalidades offline:**
+- O catálogo de exercícios é carregado na primeira vez e fica disponível offline.
+- Treinos pendentes são salvos no `localStorage` e enviados quando a conexão voltar.
+- O gráfico de progresso precisa de rede (dados do servidor).
 
-Com JDK 21 e Android SDK instalados (ou nas pastas portáteis `.tools/jdk21` e `.tools/android-sdk`):
+## Deploy no Render (Free + Neon Postgres)
 
-```powershell
-.\scripts\build-apk.ps1
-```
+1. **No GitHub:** garanta que o repositório tem todos os arquivos (incluindo `render.yaml`, `render` da pasta raiz).
+2. **No Neon:** crie uma conta gratuita em [neon.tech], crie um projeto e copie a **Connection String** (formato `postgresql+psycopg://`).
+3. **No Render:**
+   - Acesse [render.com](https://render.com) e crie uma nova conta.
+   - Clique em **New** → **Blueprint**.
+   - Conecte o repositório GitHub `flaviofilho-hub/treinolog`.
+   - O `render.yaml` será lido automaticamente.
+   - Quando Render pedir as variáveis de ambiente:
+     - `API_KEY`: deixe como gerado ou defina uma chave longa e aleatória.
+     - `DATABASE_URL`: cole a Connection String do Neon (ex.: `postgresql+psycopg://ep-name:password@db-name.us-east-2.aws.neon.tech/db-name`).
+     - `CORS_ORIGINS`: `https://seu-servico.onrender.com,http://localhost:5000` (opcional).
+   - Clique em **Create Web Service**.
+4. **Deploy:** O Render vai rodar `pip install -r requirements.txt`, `python seed.py` e `gunicorn --workers 1 --threads 4 --bind 0.0.0.0:$PORT wsgi:app`.
+5. **Pós-deploy:**
+   - Abra `https://seu-servico.onrender.com`.
+   - Como não há `API_KEY` definida no ambiente ainda, o app vai abrir o modal de ajustes pedindo a chave.
+   - Informe a `API_KEY` que você gerou (ou a que o Render gerou automaticamente).
+   - Toque em **Testar conexão** — deve conectar usando o PostgreSQL do Neon.
+   - Agora você pode usar o treinarolog: registrar treinos, ver histórico e progresso.
 
-O script sincroniza o frontend, compila o APK de debug e copia o resultado para `dist\treinolog-debug.apk`. Para instalar no aparelho:
+### Dicas do Render Free
 
-```powershell
-adb install -r dist\treinolog-debug.apk
-```
-
-O APK de debug é assinado com a chave de debug do Android e serve para uso pessoal. Para publicar na Play Store, gere um APK/AAB de release com keystore próprio.
-
-### Primeiro uso no aparelho
-
-1. Abra o app e toque no ícone de engrenagem.
-2. Informe a URL pública da API (ex.: `https://treinolog-production.up.railway.app`).
-3. Informe a `API_KEY` configurada no servidor.
-4. Toque em **Testar conexão** e depois em **Salvar**.
-
-A URL e a chave ficam no armazenamento local do app; trocar de servidor não exige rebuild.
-
-### HTTP em desenvolvimento
-
-O Android bloqueia HTTP sem TLS por padrão. Para testar contra o PC na rede local, use um túnel HTTPS (Cloudflare Tunnel ou Tailscale) ou configure temporariamente `usesCleartextTraffic` no manifesto de debug. Em produção, use HTTPS.
-
-### Fila offline
-
-Se o envio falhar por rede, o treino é guardado no aparelho e aparece com o selo **pendente** no histórico. A sincronização acontece ao abrir o app, ao voltar a conexão, pelo botão **Enviar pendentes** ou ao abrir o treino pendente. Erros de validação (4xx) ficam marcados e podem ser reenviados manualmente ou descartados.
-
-O catálogo de exercícios é armazenado no aparelho após a primeira carga, então a tela de novo treino continua funcionando sem conexão.
-
-O gráfico de progresso considera apenas treinos confirmados no servidor.
-
-### Package ID
-
-O ID original `io.github.flaviofilho-hub.treinolog` contém hífen, inválido em pacotes Android/Java. O projeto usa **`io.github.flaviofilho_hub.treinolog`** (underscore). Para trocar, edite `capacitor.config.json`, `android/app/build.gradle` e `android/app/src/main/res/values/strings.xml` antes de gerar o APK.
-
-## Deploy com volume persistente
-
-O ponto crítico: **SQLite precisa de disco persistente**. Planos gratuitos de Render/Vercel/Netlify usam filesystem efêmero e apagariam o banco a cada deploy. Use um volume.
-
-### Railway (recomendado)
-
-1. Suba o projeto para um repositório no GitHub.
-2. Em [railway.app](https://railway.app), crie um projeto → **Deploy from GitHub repo**.
-3. No serviço, adicione um **Volume** montado em `/data`.
-4. Variáveis:
-   - `DATABASE_URL=sqlite:////data/treinolog.db` (quatro barras: o caminho é absoluto)
-   - `API_KEY=<chave gerada>`
-5. O `Procfile` já define `gunicorn --workers 1 --threads 4 wsgi:app` (um worker por causa do SQLite).
-6. Gere um domínio público em **Settings → Networking**.
-7. Rode o seed uma vez pelo shell do Railway: `python seed.py`.
-8. Teste: `GET https://<dominio>/api/exercicios` com o header `X-API-Key`.
-
-O volume `/data` sobrevive a deploys e restarts; a conta é criada uma única vez.
-
-### Fly.io
-
-```bash
-fly launch --no-deploy
-fly volumes create treinolog_data --size 1
-fly secrets set API_KEY="<chave>"
-fly deploy
-```
-
-Adicione ao `fly.toml`:
-
-```toml
-[env]
-  DATABASE_URL = "sqlite:////data/treinolog.db"
-
-[mounts]
-  source = "treinolog_data"
-  destination = "/data"
-```
-
-Seed: `fly ssh console -C "python seed.py"`.
-
-### Render (pago)
-
-Web Service com Dockerfile, plano Starter (o free não tem disco), disco persistente montado em `/var/data` e `DATABASE_URL=sqlite:////var/data/treinolog.db`.
-
-### Alwaysdata (alternativa gratuita)
-
-Plano free de 100 MB com home persistente e Python WSGI. Aponte o site para um arquivo WSGI:
-
-```python
-import sys
-
-path = "/home/<usuario>/treinolog"
-if path not in sys.path:
-    sys.path.insert(0, path)
-
-from wsgi import app as application
-```
-
-Defina `API_KEY` e `DATABASE_URL` no ambiente. O SQLite em `instance/treinolog.db` fica no home e sobrevive aos deploys.
-
-> Se o cadastro no PythonAnywhere falhar, verifique o nome de usuário: ele não aceita hífen. Use apenas letras e números.
+- O plano Free **hiberna** após ~15 min de inatividade. O primeiro acesso depois do hibernação pode demorar 30–60s para "acordar" a instância.
+- O Neon Postgres free tem limites de consumo de métricas, mas os dados persistem.
+- Para evitar hibernação acidental, crie um *cron job* simples ou use um túnel keep-alive.
 
 ## Backup
 
-O banco inteiro é um arquivo:
-
-- local: `instance/treinolog.db`
-- Railway: `/data/treinolog.db`
-- Fly: `/data/treinolog.db`
-
-Copie esse arquivo periodicamente (Railway shell, `fly ssh sftp get` ou snapshot do volume). Não há backup automático configurado.
+- **Neon:** use o recurso nativo de *branches* e *point-in-time recovery* do painel do Neon.
+- **SQLite local:** o banco é o arquivo `instance/treinolog.db`. copie-o periodicamente.
+- Não há backup automático configurado.
 
 ## Segurança
 
-- A `API_KEY` embutida no APK é extraível; ela evita escrita casual, não é autenticação forte. Para algo mais sério, coloque o serviço atrás do Cloudflare Access ou implemente login.
-- Use sempre HTTPS em produção.
-- O app é single-user: não há cadastro/login de usuários.
-- Treinos pendentes ficam em `localStorage` no aparelho; limpar os dados do app apaga a fila.
+- A `API_KEY` evita escrita casual, não é autenticação forte. Para algo mais sério, coloque o serviço atrás do Cloudflare Access ou implemente login.
+- Use sempre HTTPS em produção (o Render fornece HTTPS gratuito).
+- O app é **single-user**: não há cadastro/login de múltiplos usuários.
+- Treinos pendentes ficam em `localStorage` no navegador; limpar os dados do app apaga a fila.
 
 ## Roadmap v1.1
 
-- Testes físicos (`PhysicalTest` + `TestResult`)
 - Edição de treino e exclusão de exercícios
 - Exportação/importação do banco
 - Cache offline de leitura do histórico e das estatísticas (hoje o catálogo de exercícios e a fila de escrita funcionam offline)
+- Suporte a múltiplos usuários (opcional)

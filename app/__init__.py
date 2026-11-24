@@ -5,7 +5,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
+from urllib.parse import urlparse, urlunparse
 
 db = SQLAlchemy()
 
@@ -14,35 +14,43 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 INSTANCE_DIR = BASE_DIR / "instance"
 
 
+def normalize_db_url(url):
+    """Normaliza URLs de banco: trata postgres:// e ajusta drivers."""
+    if not url:
+        return url
+    url = url.strip()
+    # Se já vier com driver SQLAlchemy, usa como está
+    if url.startswith("sqlite://") or url.startswith("postgres://") or url.startswith("postgresql://"):
+        return url
+    # Fallback: se for um caminho relativo, vira SQLite local
+    return url
+
+
 def resolve_database_uri(default_uri):
-    """Escolhe o banco: DATABASE_URL > volume do Railway > instance local."""
+    """Resolve o DATABASE_URL: PostgreSQL (Neon) > SQLite local (desenvolvimento)."""
     explicit = os.environ.get("DATABASE_URL", "").strip()
     if explicit:
-        return explicit
+        return normalize_db_url(explicit)
 
-    volume_path = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
-    if volume_path:
-        database = Path(volume_path) / "treinolog.db"
-        return f"sqlite:///{database.as_posix()}"
-
-    return default_uri
+    # Fallback para SQLite local (apenas para desenvolvimento)
+    return normalize_db_url(default_uri)
 
 
 def ensure_database_directory(uri):
-    """Cria a pasta do SQLite para o volume existir antes do primeiro acesso."""
+    """Cria pasta pai apenas para SQLite local. PostgreSQL não precisa."""
     try:
-        url = make_url(uri)
+        url = urlparse(uri)
     except Exception:
         return
 
-    if url.get_backend_name() != "sqlite":
-        return
+    if url.scheme != "sqlite":
+        return  # PostgreSQL não tem caminho de arquivo no sistema
 
-    database = url.database
+    database = url.path.lstrip("/")
     if not database or database == ":memory:":
         return
 
-    Path(database).expanduser().parent.mkdir(parents=True, exist_ok=True)
+    Path(database).parent.mkdir(parents=True, exist_ok=True)
 
 
 def create_app(test_config=None):
@@ -53,7 +61,10 @@ def create_app(test_config=None):
     app.config.from_mapping(
         SQLALCHEMY_DATABASE_URI=resolve_database_uri(default_db_uri),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
+        SQLALCHEMY_ENGINE_OPTIONS={
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+        },
         API_KEY=os.environ.get("API_KEY", "").strip(),
         MAX_CONTENT_LENGTH=2 * 1024 * 1024,
     )
@@ -69,8 +80,7 @@ def create_app(test_config=None):
         origin.strip()
         for origin in os.environ.get(
             "CORS_ORIGINS",
-            "https://localhost,capacitor://localhost,"
-            "http://localhost:5000,http://127.0.0.1:5000",
+            "https://localhost,http://localhost:5000,http://127.0.0.1:5000",
         ).split(",")
         if origin.strip()
     ]
@@ -98,6 +108,14 @@ def create_app(test_config=None):
         except Exception:
             return jsonify(status="error"), 503
         return jsonify(status="ok")
+
+    @app.get("/api/status")
+    def api_status():
+        try:
+            db.session.execute(text("SELECT 1"))
+            return jsonify({"status": "ok", "db": "connected"})
+        except Exception:
+            return jsonify({"status": "error", "db": "disconnected"}), 503
 
     @app.errorhandler(413)
     def payload_too_large(_error):

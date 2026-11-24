@@ -1,7 +1,6 @@
 import { register, render, startRouter } from "./router.js";
-import { needsSetup } from "./config.js";
+import { needsSetup, openSettingsModal, saveSettings } from "./config.js";
 import { pendingCount, syncPending } from "./pending.js";
-import { openSettingsModal } from "./settings.js";
 import { toast } from "./ui.js";
 import { renderHome } from "./pages/home.js";
 import { renderNew } from "./pages/new.js";
@@ -26,6 +25,7 @@ function updatePendingBadge() {
 }
 
 window.addEventListener("pending:changed", updatePendingBadge);
+
 document
   .getElementById("open-settings")
   .addEventListener("click", () => openSettingsModal());
@@ -42,6 +42,7 @@ window.addEventListener("online", async () => {
 startRouter();
 updatePendingBadge();
 
+// No modo web, sempre verificar configuração na inicialização
 if (needsSetup()) {
   openSettingsModal({ firstRun: true });
 } else {
