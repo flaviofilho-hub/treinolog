@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+.tools
+__pycache__
+*.pyc
+*.log
+.pytest_cache
+instance
+node_modules
+android
+assets
+dist
+scripts
+tests
+*.md
+.env
