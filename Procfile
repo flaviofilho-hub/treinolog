@@ -1,1 +1,1 @@
-web: python seed.py && gunicorn --workers 1 --threads 4 --bind 0.0.0.0:$PORT wsgi:app
+web: python -m flask run --host=0.0.0.0 --port=$PORT
