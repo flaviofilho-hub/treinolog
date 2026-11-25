@@ -1,10 +1,27 @@
 from datetime import date, datetime, timezone
 
 from . import db
+import bcrypt
 
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+class User(db.Model):
+    __tablename__ = "user"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    senha_hash = db.Column(db.String(128), nullable=False)
+    api_key = db.Column(db.String(64), unique=True, nullable=True)
+
+    def set_senha(self, senha):
+        self.senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    def check_senha(self, senha):
+        return bcrypt.checkpw(senha.encode("utf-8"), self.senha_hash.encode("utf-8"))
 
 
 class Exercise(db.Model):
@@ -13,6 +30,7 @@ class Exercise(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(80), unique=True, nullable=False)
     grupo_muscular = db.Column(db.String(40), nullable=True)
+    bodyweight = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
     sets = db.relationship("WorkoutSet", back_populates="exercise", lazy="dynamic")
@@ -22,6 +40,7 @@ class Exercise(db.Model):
             "id": self.id,
             "nome": self.nome,
             "grupo_muscular": self.grupo_muscular,
+            "bodyweight": self.bodyweight,
         }
 
 
@@ -29,6 +48,7 @@ class Workout(db.Model):
     __tablename__ = "workouts"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     client_id = db.Column(db.String(64), unique=True, nullable=True)
     data = db.Column(db.Date, nullable=False, default=date.today, index=True)
     nome = db.Column(db.String(80), nullable=False)

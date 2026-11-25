@@ -66,6 +66,7 @@ async function request(path, { method = "GET", body } = {}) {
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
+      credentials: "include",
     });
 
     const text = await response.text();
@@ -131,6 +132,7 @@ export const api = {
     request("/api/treinos", { method: "POST", body: payload }),
   deleteWorkout: (id) => request(`/api/treinos/${id}`, { method: "DELETE" }),
   stats: () => request("/api/estatisticas"),
+  statsByMuscleGroup: () => request("/api/estatisticas/por-grupo-muscular"),
   progress: (exerciseId, params) =>
     request(`/api/progresso/${exerciseId}${buildQuery(params)}`),
 };

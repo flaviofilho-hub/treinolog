@@ -11,6 +11,7 @@ import {
 } from "../ui.js";
 
 let exercises = [];
+let exercisesById = {};
 
 export async function renderNew() {
   const app = document.getElementById("app");
@@ -18,6 +19,7 @@ export async function renderNew() {
 
   try {
     exercises = await api.listExercises();
+    exercisesById = Object.fromEntries(exercises.map((e) => [e.id, e]));
   } catch (error) {
     renderError(app, error.message, renderNew);
     return;
@@ -149,6 +151,22 @@ function setupForm() {
   document
     .getElementById("add-block")
     .addEventListener("click", () => addBlock(true));
+
+  form.addEventListener("change", (event) => {
+    const select = event.target.closest("[data-exercise]");
+    if (select) {
+      const block = select.closest("[data-block]");
+      const exerciseId = Number(select.value);
+      const exercise = exercisesById[exerciseId];
+      const isBodyweight = Boolean(exercise?.bodyweight);
+      block.dataset.bodyweight = isBodyweight ? "1" : "0";
+      block.querySelectorAll(".set-row [data-load]").forEach((input) => {
+        input.disabled = isBodyweight;
+        if (isBodyweight) input.value = "0";
+      });
+      updateTotals();
+    }
+  });
 
   form.addEventListener("click", (event) => {
     const addSet = event.target.closest("[data-add-set]");
@@ -315,9 +333,12 @@ function setupForm() {
 }
 
 function createBlock(selectedId) {
+  const exercise = exercisesById[selectedId] || {};
+  const isBodyweight = Boolean(exercise.bodyweight);
   const block = document.createElement("div");
   block.className = "exercise-block card";
   block.dataset.block = "";
+  block.dataset.bodyweight = isBodyweight ? "1" : "0";
   block.innerHTML = `<div class="block-head">
       <select class="input" data-exercise aria-label="Exercício">
         ${optionsFor(selectedId)}
@@ -367,6 +388,7 @@ function addSetRow(block) {
   const last = rows[rows.length - 1];
   const reps = last ? last.querySelector("[data-reps]").value : "10";
   const load = last ? last.querySelector("[data-load]").value : "0";
+  const isBodyweight = block.dataset.bodyweight === "1";
 
   const row = document.createElement("div");
   row.className = "set-row";
@@ -374,7 +396,8 @@ function addSetRow(block) {
     <input class="input" type="number" inputmode="numeric" min="1" max="1000"
       step="1" value="${esc(reps)}" data-reps aria-label="Repetições" />
     <input class="input" type="number" inputmode="decimal" min="0" max="2000"
-      step="0.5" value="${esc(load)}" data-load aria-label="Carga em kg" />
+      step="0.5" value="${esc(isBodyweight ? "0" : load)}" data-load
+      aria-label="Carga em kg" ${isBodyweight ? "disabled" : ""} />
     <button type="button" class="icon-btn subtle" data-remove-set
       aria-label="Remover série">${icons.x}</button>`;
   setsEl.appendChild(row);

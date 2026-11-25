@@ -1,5 +1,6 @@
 import { register, render, startRouter } from "./router.js";
-import { needsSetup, openSettingsModal, saveSettings } from "./config.js";
+import { needsSetup, saveSettings } from "./config.js";
+import { openSettingsModal } from "./settings.js";
 import { pendingCount, syncPending } from "./pending.js";
 import { toast } from "./ui.js";
 import { renderHome } from "./pages/home.js";

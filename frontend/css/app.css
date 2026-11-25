@@ -479,6 +479,64 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin-left: 2px;
 }
 
+.muscle-grid {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.muscle-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 13px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+}
+
+.muscle-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.muscle-name {
+  font-weight: 650;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.muscle-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+.muscle-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.muscle-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+.muscle-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .section-head {
   display: flex;
   align-items: center;

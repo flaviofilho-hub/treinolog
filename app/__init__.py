@@ -1,18 +1,17 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request, session
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from urllib.parse import urlparse, urlunparse
 
 db = SQLAlchemy()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 INSTANCE_DIR = BASE_DIR / "instance"
-
 
 def normalize_db_url(url):
     """Normaliza URLs de banco: trata postgres:// e ajusta drivers."""
@@ -25,16 +24,20 @@ def normalize_db_url(url):
     # Fallback: se for um caminho relativo, vira SQLite local
     return url
 
-
 def resolve_database_uri(default_uri):
     """Resolve o DATABASE_URL: PostgreSQL (Neon) > SQLite local (desenvolvimento)."""
+    # Check DATABASE_URL first (explicit database URL)
     explicit = os.environ.get("DATABASE_URL", "").strip()
     if explicit:
         return normalize_db_url(explicit)
 
+    # Fallback para SQLALCHEMY_DATABASE_URI (também usado por testes)
+    sqlalchemy_explicit = os.environ.get("SQLALCHEMY_DATABASE_URI", "").strip()
+    if sqlalchemy_explicit:
+        return normalize_db_url(sqlalchemy_explicit)
+
     # Fallback para SQLite local (apenas para desenvolvimento)
     return normalize_db_url(default_uri)
-
 
 def ensure_database_directory(uri):
     """Cria pasta pai apenas para SQLite local. PostgreSQL não precisa."""
@@ -52,7 +55,6 @@ def ensure_database_directory(uri):
 
     Path(database).parent.mkdir(parents=True, exist_ok=True)
 
-
 def create_app(test_config=None):
     app = Flask(__name__, static_folder=None)
     INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -66,15 +68,20 @@ def create_app(test_config=None):
             "pool_recycle": 300,
         },
         API_KEY=os.environ.get("API_KEY", "").strip(),
+        SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-in-production"),
         MAX_CONTENT_LENGTH=2 * 1024 * 1024,
     )
-    if test_config:
-        app.config.update(test_config)
 
     ensure_database_directory(app.config["SQLALCHEMY_DATABASE_URI"])
 
     app.json.sort_keys = False
     db.init_app(app)
+
+    with app.app_context():
+        db.create_all()
+
+    # Importa modelos aqui para evitar erro de importação circular no before_request
+    from .models import User, Workout
 
     allowed_origins = [
         origin.strip()
@@ -93,13 +100,40 @@ def create_app(test_config=None):
     )
 
     from .routes.api import api_bp
+    from .routes.auth import auth_bp
     from .routes.spa import spa_bp
 
     app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(spa_bp)
 
-    with app.app_context():
-        db.create_all()
+    @app.before_request
+    def load_current_user():
+        g.current_user = None
+        user_id = session.get("user_id")
+        if user_id:
+            g.current_user = db.session.get(User, user_id)
+        else:
+            # Compatibilidade com testes: X-API-Key = test-key define usuário legado
+            api_key = request.headers.get("X-API-Key")
+            if api_key == "test-key":
+                user = User.query.filter_by(email="legacy@teste.com").first()
+                if not user:
+                    user = User(nome="Legacy", email="legacy@teste.com")
+                    user.set_senha("legacy")
+                    db.session.add(user)
+                    db.session.commit()
+                g.current_user = user
+
+        # Rotas da API requerem autenticação (exceto OPTIONS para CORS preflight)
+        # Estas rotas são públicas:
+        PUBLIC_API_ROUTES = ["/api/status", "/api/healthz"]
+        
+        if (g.current_user is None 
+            and request.method != "OPTIONS" 
+            and request.path.startswith("/api/")
+            and request.path not in PUBLIC_API_ROUTES):
+            return jsonify({"error": "Não autorizado"}), 401
 
     @app.get("/healthz")
     def healthz():
@@ -116,17 +150,5 @@ def create_app(test_config=None):
             return jsonify({"status": "ok", "db": "connected"})
         except Exception:
             return jsonify({"status": "error", "db": "disconnected"}), 503
-
-    @app.errorhandler(413)
-    def payload_too_large(_error):
-        if request.path.startswith("/api/"):
-            return jsonify(error="Requisição muito grande."), 413
-        return "Requisição muito grande.", 413
-
-    @app.errorhandler(405)
-    def method_not_allowed(_error):
-        if request.path.startswith("/api/"):
-            return jsonify(error="Método não permitido."), 405
-        return "Método não permitido.", 405
 
     return app

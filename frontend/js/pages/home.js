@@ -18,8 +18,11 @@ export async function renderHome() {
   app.innerHTML = `${hero()}${loadingList(2)}`;
 
   try {
-    const stats = await api.stats();
-    app.innerHTML = `${hero()}${view(stats, getPending())}`;
+    const [stats, muscleStats] = await Promise.all([
+      api.stats(),
+      api.statsByMuscleGroup(),
+    ]);
+    app.innerHTML = `${hero()}${view(stats, muscleStats, getPending())}`;
     bind(app);
   } catch (error) {
     const pending = getPending();
@@ -43,7 +46,7 @@ function hero() {
     </section>`;
 }
 
-function view(stats, pending) {
+function view(stats, muscleStats, pending) {
   const pendingBanner = pending.length
     ? `<div class="banner">
          ${icons.warning}
@@ -89,6 +92,31 @@ function view(stats, pending) {
        </div>`
     : "";
 
+  const muscleSection = muscleStats.por_grupo.length
+    ? `<div class="section-head">
+         <h2>Volume por grupo muscular</h2>
+       </div>
+       <div class="muscle-grid">
+         ${muscleStats.por_grupo
+           .map(
+             (item) => `<div class="muscle-item">
+               <div class="muscle-header">
+                 <span class="muscle-name">${esc(item.grupo_muscular)}</span>
+                 <span class="muscle-value">${fmtVolume(item.volume_kg)}</span>
+               </div>
+               <div class="muscle-bar">
+                 <div class="muscle-bar-fill" style="width:${item.percentual}%"></div>
+               </div>
+               <div class="muscle-meta">
+                 <span>${item.percentual}% do volume</span>
+                 <span>${fmtNumber(item.total_series)} séries</span>
+               </div>
+             </div>`
+           )
+           .join("")}
+       </div>`
+    : "";
+
   return `${pendingBanner}
     <div class="stat-grid">
       <div class="stat">
@@ -104,6 +132,7 @@ function view(stats, pending) {
         <div class="stat-value">${fmtVolume(stats.volume_total_kg)}</div>
       </div>
     </div>
+    ${muscleSection}
     ${recent}
     ${records}`;
 }

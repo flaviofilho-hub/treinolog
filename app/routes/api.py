@@ -1,7 +1,7 @@
 import re
 from datetime import date, datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -65,6 +65,7 @@ def create_exercise():
     payload = request.get_json(silent=True) or {}
     nome = (payload.get("nome") or "").strip()
     grupo = (payload.get("grupo_muscular") or "").strip() or None
+    bodyweight = bool(payload.get("bodyweight", False))
 
     if not nome:
         return error("Informe o nome do exercício.")
@@ -77,7 +78,7 @@ def create_exercise():
     if existing:
         return error("Este exercício já está cadastrado.", 409)
 
-    exercise = Exercise(nome=nome, grupo_muscular=grupo)
+    exercise = Exercise(nome=nome, grupo_muscular=grupo, bodyweight=bodyweight)
     db.session.add(exercise)
     try:
         db.session.commit()
@@ -89,13 +90,17 @@ def create_exercise():
 
 @api_bp.get("/treinos")
 def list_workouts():
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
     try:
         limit = parse_int(request.args.get("limit", 30), "limit", 1, 100)
         offset = parse_int(request.args.get("offset", 0), "offset", 0, 100000)
     except ValueError as exc:
         return error(str(exc))
 
-    query = Workout.query.options(selectinload(Workout.sets))
+    query = Workout.query.options(selectinload(Workout.sets)).filter_by(
+        user_id=g.current_user.id
+    )
 
     exercise_id = request.args.get("exercicio_id", type=int)
     if exercise_id:
@@ -128,6 +133,8 @@ def list_workouts():
 
 @api_bp.post("/treinos")
 def create_workout():
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return error("Envie um JSON válido.")
@@ -179,11 +186,11 @@ def create_workout():
         except (TypeError, ValueError):
             return error(f"Série {index}: exercise_id inválido.")
 
-    found_ids = {
-        exercise.id
+    found_exercises = {
+        exercise.id: exercise
         for exercise in Exercise.query.filter(Exercise.id.in_(exercise_ids)).all()
     }
-    missing = sorted(exercise_ids - found_ids)
+    missing = sorted(exercise_ids - set(found_exercises.keys()))
     if missing:
         return error(
             "Exercício(s) não encontrado(s).",
@@ -191,6 +198,7 @@ def create_workout():
         )
 
     workout = Workout(
+        user_id=g.current_user.id,
         client_id=client_id,
         data=data,
         nome=nome,
@@ -204,7 +212,11 @@ def create_workout():
             exercise_id = int(raw.get("exercise_id"))
             serie = parse_int(raw.get("serie", index), "serie", 1, 100)
             reps = parse_int(raw.get("reps"), "reps", 1, 1000)
-            carga = parse_float(raw.get("carga_kg", 0), "carga_kg", 0, 2000)
+            exercise = found_exercises[exercise_id]
+            if exercise.bodyweight:
+                carga = 0.0
+            else:
+                carga = parse_float(raw.get("carga_kg", 0), "carga_kg", 0, 2000)
         except (TypeError, ValueError) as exc:
             return error(f"Série {index}: {exc}")
 
@@ -237,16 +249,20 @@ def create_workout():
 
 @api_bp.get("/treinos/<int:workout_id>")
 def get_workout(workout_id):
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
     workout = db.session.get(Workout, workout_id)
-    if not workout:
+    if not workout or workout.user_id != g.current_user.id:
         return error("Treino não encontrado.", 404)
     return jsonify(workout.to_dict())
 
 
 @api_bp.delete("/treinos/<int:workout_id>")
 def delete_workout(workout_id):
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
     workout = db.session.get(Workout, workout_id)
-    if not workout:
+    if not workout or workout.user_id != g.current_user.id:
         return error("Treino não encontrado.", 404)
     db.session.delete(workout)
     db.session.commit()
@@ -255,15 +271,31 @@ def delete_workout(workout_id):
 
 @api_bp.get("/estatisticas")
 def stats():
-    total_workouts = db.session.query(func.count(Workout.id)).scalar() or 0
-    totals = db.session.query(
-        func.count(WorkoutSet.id),
-        func.coalesce(func.sum(WorkoutSet.reps), 0),
-        func.coalesce(func.sum(WorkoutSet.reps * WorkoutSet.carga_kg), 0.0),
-    ).one()
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
+    user_filter = Workout.user_id == g.current_user.id
+    total_workouts = (
+        db.session.query(func.count(Workout.id))
+        .filter(user_filter)
+        .scalar()
+        or 0
+    )
+    totals = (
+        db.session.query(
+            func.count(WorkoutSet.id),
+            func.coalesce(func.sum(WorkoutSet.reps), 0),
+            func.coalesce(func.sum(WorkoutSet.reps * WorkoutSet.carga_kg), 0.0),
+        )
+        .join(Workout, Workout.id == WorkoutSet.workout_id)
+        .filter(user_filter)
+        .one()
+    )
 
     ultimos = (
-        Workout.query.order_by(Workout.data.desc(), Workout.id.desc()).limit(5).all()
+        Workout.query.filter(user_filter)
+        .order_by(Workout.data.desc(), Workout.id.desc())
+        .limit(5)
+        .all()
     )
 
     rn = func.row_number().over(
@@ -285,6 +317,7 @@ def stats():
         )
         .join(Workout, Workout.id == WorkoutSet.workout_id)
         .join(Exercise, Exercise.id == WorkoutSet.exercise_id)
+        .filter(user_filter)
         .subquery()
     )
     recordes = (
@@ -320,8 +353,62 @@ def stats():
     )
 
 
+@api_bp.get("/estatisticas/por-grupo-muscular")
+def stats_by_muscle_group():
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
+    user_filter = Workout.user_id == g.current_user.id
+    rows = (
+        db.session.query(
+            Exercise.grupo_muscular.label("grupo"),
+            func.count(WorkoutSet.id).label("total_series"),
+            func.coalesce(func.sum(WorkoutSet.reps), 0).label("total_reps"),
+            func.coalesce(
+                func.sum(WorkoutSet.reps * WorkoutSet.carga_kg), 0.0
+            ).label("volume_kg"),
+        )
+        .join(WorkoutSet, WorkoutSet.exercise_id == Exercise.id)
+        .join(Workout, Workout.id == WorkoutSet.workout_id)
+        .filter(Exercise.grupo_muscular.isnot(None))
+        .filter(user_filter)
+        .group_by(Exercise.grupo_muscular)
+        .all()
+    )
+
+    total_series = sum(int(r.total_series or 0) for r in rows)
+
+    resultado = []
+    for r in rows:
+        volume = round(float(r.volume_kg or 0), 1)
+        series = int(r.total_series or 0)
+        pct = round((series / total_series * 100), 1) if total_series > 0 else 0.0
+        resultado.append(
+            {
+                "grupo_muscular": r.grupo,
+                "total_series": series,
+                "total_reps": int(r.total_reps or 0),
+                "volume_kg": volume,
+                "percentual": pct,
+            }
+        )
+
+    resultado.sort(key=lambda x: x["total_series"], reverse=True)
+
+    total_volume = round(sum(float(r.volume_kg or 0) for r in rows), 1)
+
+    return jsonify(
+        {
+            "total_volume_kg": total_volume,
+            "total_series": total_series,
+            "por_grupo": resultado,
+        }
+    )
+
+
 @api_bp.get("/progresso/<int:exercise_id>")
 def progress(exercise_id):
+    if g.current_user is None:
+        return error("Não autorizado.", 401)
     exercise = db.session.get(Exercise, exercise_id)
     if not exercise:
         return error("Exercício não encontrado.", 404)
@@ -336,6 +423,7 @@ def progress(exercise_id):
     except ValueError as exc:
         return error(str(exc))
 
+    user_filter = Workout.user_id == g.current_user.id
     query = (
         db.session.query(
             Workout.data.label("data"),
@@ -347,6 +435,7 @@ def progress(exercise_id):
         )
         .join(WorkoutSet, WorkoutSet.workout_id == Workout.id)
         .filter(WorkoutSet.exercise_id == exercise_id)
+        .filter(user_filter)
     )
     if de:
         query = query.filter(Workout.data >= de)
@@ -359,6 +448,7 @@ def progress(exercise_id):
         db.session.query(WorkoutSet, Workout)
         .join(Workout, Workout.id == WorkoutSet.workout_id)
         .filter(WorkoutSet.exercise_id == exercise_id)
+        .filter(user_filter)
     )
     if de:
         pr_query = pr_query.filter(Workout.data >= de)
