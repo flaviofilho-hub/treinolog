@@ -4,10 +4,38 @@ from .. import FRONTEND_DIR
 
 spa_bp = Blueprint("spa", __name__)
 
+ASSET_SUFFIXES = {
+    ".css",
+    ".gif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".js",
+    ".json",
+    ".map",
+    ".mjs",
+    ".otf",
+    ".png",
+    ".svg",
+    ".ttf",
+    ".txt",
+    ".wasm",
+    ".webmanifest",
+    ".webp",
+    ".woff",
+    ".woff2",
+    ".xml",
+}
+
+
+def _no_store(response):
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
 
 @spa_bp.get("/")
 def index():
-    return send_from_directory(FRONTEND_DIR, "index.html")
+    return _no_store(send_from_directory(FRONTEND_DIR, "index.html"))
 
 
 @spa_bp.get("/<path:filename>")
@@ -22,5 +50,20 @@ def static_or_spa(filename):
         abort(404)
 
     if candidate.is_file():
-        return send_from_directory(FRONTEND_DIR, filename)
-    return send_from_directory(FRONTEND_DIR, "index.html")
+        response = send_from_directory(FRONTEND_DIR, filename)
+        suffix = candidate.suffix.lower()
+
+        if suffix in {".html", ".webmanifest"}:
+            return _no_store(response)
+
+        # Estáticos (JS/CSS) precisam revalidar para não ficarem presos em cache.
+        if suffix in ASSET_SUFFIXES:
+            response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+        return response
+
+    # Nunca devolver index.html para um arquivo estático ausente: o navegador
+    # receberia HTML no lugar de JS/CSS e falharia com erro de MIME type.
+    if candidate.suffix.lower() in ASSET_SUFFIXES:
+        abort(404)
+
+    return _no_store(send_from_directory(FRONTEND_DIR, "index.html"))

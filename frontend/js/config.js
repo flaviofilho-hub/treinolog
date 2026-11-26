@@ -39,7 +39,8 @@ export function resetSettings() {
   window.dispatchEvent(new Event("settings:changed"));
 }
 
-// No modo web, sempre precisamos de chave. Retorna true se precisar pedir ao usuário.
+// Na web, a autenticação é feita por sessão (login/senha) na mesma origem,
+// então nenhuma chave de API é necessária. A chave só é exigida no app nativo.
 export function needsSetup() {
-  return !getApiKey();
+  return isNativePlatform() && !getApiKey();
 }

@@ -55,6 +55,33 @@ def ensure_database_directory(uri):
 
     Path(database).parent.mkdir(parents=True, exist_ok=True)
 
+def ensure_schema():
+    """Ajustes idempotentes para bancos criados por versões anteriores."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(db.engine)
+    tables = set(inspector.get_table_names())
+
+    if "user" in tables:
+        user_columns = {column["name"] for column in inspector.get_columns("user")}
+        if "api_key" not in user_columns:
+            db.session.execute(text('ALTER TABLE "user" ADD COLUMN api_key VARCHAR(64)'))
+            db.session.commit()
+
+    if "workouts" in tables:
+        workout_columns = {
+            column["name"] for column in inspector.get_columns("workouts")
+        }
+        if "user_id" not in workout_columns:
+            db.session.execute(
+                text(
+                    'ALTER TABLE workouts ADD COLUMN user_id INTEGER '
+                    'REFERENCES "user"(id)'
+                )
+            )
+            db.session.commit()
+
+
 def create_app(test_config=None):
     app = Flask(__name__, static_folder=None)
     INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,11 +104,12 @@ def create_app(test_config=None):
     app.json.sort_keys = False
     db.init_app(app)
 
+    # Importa os modelos antes do create_all para registrar as tabelas no metadata.
+    from .models import User, Workout  # noqa: F401
+
     with app.app_context():
         db.create_all()
-
-    # Importa modelos aqui para evitar erro de importação circular no before_request
-    from .models import User, Workout
+        ensure_schema()
 
     allowed_origins = [
         origin.strip()

@@ -1,92 +1,76 @@
 import { register, render, startRouter } from "./router.js";
-import { needsSetup, saveSettings } from "./config.js";
+import { isNativePlatform, needsSetup } from "./config.js";
 import { openSettingsModal } from "./settings.js";
 import { pendingCount, syncPending } from "./pending.js";
 import { toast } from "./ui.js";
+import { getCurrentUser, renderAuthGate, updateAuthUI } from "./auth.js";
 import { renderHome } from "./pages/home.js";
 import { renderNew } from "./pages/new.js";
 import { renderHistory } from "./pages/history.js";
 import { renderDetail } from "./pages/detail.js";
 import { renderProgress } from "./pages/progress.js";
-import { renderExercises } from "./pages/exercicios.js";
+import { renderExercises } from "./pages/exercises.js";
 
-async function showLoginModal() {
-  const email = prompt("Digite seu e-mail:");
-  const senha = prompt("Digite sua senha:");
-  if (!email || !senha) {
-    toast("E-mail e senha são obrigatórios.", "error");
-    return;
-  }
-  try {
-    const response = await fetch("/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, senha })
-    });
-    const data = await response.json();
-    if (response.ok) {
-      toast(data.message || "Login bem-sucedido!");
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
-    } else {
-      toast(data.error || "Falha no login.", "error");
-    }
-  } catch (err) {
-    console.error("Erro no login:", err);
-    toast("Erro ao tentar fazer login.", "error");
-  }
+register("/", renderHome);
+register("/novo", renderNew);
+register("/historico", renderHistory);
+register("/treino/:id", renderDetail);
+register("/progresso", renderProgress);
+register("/exercicios", renderExercises);
+
+const indicator = document.getElementById("pending-indicator");
+
+function updatePendingBadge() {
+  if (!indicator) return;
+  const count = pendingCount();
+  indicator.hidden = count === 0;
+  indicator.textContent = `${count} pendente${count === 1 ? "" : "s"}`;
 }
 
-async function showRegisterModal() {
-  const nome = prompt("Digite seu nome:");
-  const email = prompt("Digite seu e-mail:");
-  const senha = prompt("Digite uma senha (mínimo 6 caracteres):");
-  if (!nome || !email || !senha) {
-    toast("Todos os campos são obrigatórios.", "error");
-    return;
-  }
-  if (senha.length < 6) {
-    toast("A senha deve ter no mínimo 6 caracteres.", "error");
-    return;
-  }
-  try {
-    const response = await fetch("/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nome, email, senha })
-    });
-    const data = await response.json();
-    if (response.ok) {
-      toast(data.message || "Registro bem-sucedido!");
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+async function bootstrap() {
+  const settingsButton = document.getElementById("open-settings");
+  if (settingsButton) {
+    if (isNativePlatform()) {
+      settingsButton.addEventListener("click", () => openSettingsModal());
     } else {
-      toast(data.error || "Falha no registro.", "error");
+      // Na web a conexão é a mesma origem e o login é por sessão.
+      settingsButton.style.display = "none";
     }
-  } catch (err) {
-    console.error("Erro no registro:", err);
-    toast("Erro ao tentar registrar.", "error");
   }
-}
 
-// No modo web, sempre verificar configuração na inicialização
-if (needsSetup()) {
-  openSettingsModal({ firstRun: true });
-} else {
-  syncPending().then((result) => {
+  window.addEventListener("pending:changed", updatePendingBadge);
+
+  const user = await getCurrentUser();
+  updateAuthUI(user);
+
+  if (!user) {
+    renderAuthGate(document.getElementById("app"));
+    return;
+  }
+
+  startRouter();
+  updatePendingBadge();
+
+  window.addEventListener("online", async () => {
+    const result = await syncPending();
     if (result.synced) {
-      toast(`${result.synced} treino(s) pendente(s) enviado(s).`);
+      toast(`${result.synced} treino(s) enviado(s).`);
       updatePendingBadge();
       render();
     }
   });
+
+  if (needsSetup()) {
+    openSettingsModal({ firstRun: true });
+  } else {
+    syncPending().then((result) => {
+      if (result.synced) {
+        toast(`${result.synced} treino(s) pendente(s) enviado(s).`);
+        updatePendingBadge();
+        render();
+      }
+    });
+  }
 }
 
-// Garantir que o router re-renderize quando o estado mudar (ex: login)
-window.addEventListener("storage", (event) => {
-  if (event.key === "treinolog_user") {
-    render();
-  }
-});
+bootstrap();

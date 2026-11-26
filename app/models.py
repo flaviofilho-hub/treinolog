@@ -8,6 +8,11 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
+def _senha_bytes(senha):
+    """bcrypt aceita no máximo 72 bytes; trunca de forma consistente."""
+    return senha.encode("utf-8")[:72]
+
+
 class User(db.Model):
     __tablename__ = "user"
 
@@ -18,10 +23,17 @@ class User(db.Model):
     api_key = db.Column(db.String(64), unique=True, nullable=True)
 
     def set_senha(self, senha):
-        self.senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        self.senha_hash = bcrypt.hashpw(_senha_bytes(senha), bcrypt.gensalt()).decode("utf-8")
 
     def check_senha(self, senha):
-        return bcrypt.checkpw(senha.encode("utf-8"), self.senha_hash.encode("utf-8"))
+        return bcrypt.checkpw(_senha_bytes(senha), self.senha_hash.encode("utf-8"))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "email": self.email,
+        }
 
 
 class Exercise(db.Model):

@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request, session
+from sqlalchemy import text
 
 from .. import db
 from ..models import User
@@ -19,6 +20,8 @@ def register():
         return jsonify({"error": "Informe o e-mail."}), 400
     if len(senha) < 6:
         return jsonify({"error": "A senha deve ter pelo menos 6 caracteres."}), 400
+    if len(senha.encode("utf-8")) > 72:
+        return jsonify({"error": "A senha deve ter no máximo 72 caracteres."}), 400
 
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Este e-mail já está cadastrado."}), 409
@@ -26,6 +29,19 @@ def register():
     user = User(nome=nome, email=email)
     user.set_senha(senha)
     db.session.add(user)
+    db.session.flush()
+
+    # A primeira conta real herda os treinos antigos (criados antes do
+    # multi-usuário, quando ainda não existia user_id).
+    other_users = User.query.filter(
+        User.id != user.id, User.email != "legacy@teste.com"
+    ).count()
+    if other_users == 0:
+        db.session.execute(
+            text("UPDATE workouts SET user_id = :uid WHERE user_id IS NULL"),
+            {"uid": user.id},
+        )
+
     db.session.commit()
 
     session.clear()
