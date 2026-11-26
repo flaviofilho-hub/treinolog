@@ -1,7 +1,6 @@
 const CACHE_NAME = "treinolog-pwa-v1";
 const PRECACHE_URLS = [
   ".",
-  "js/main.js",
   "js/router.js",
   "js/config.js",
   "js/api.js",
