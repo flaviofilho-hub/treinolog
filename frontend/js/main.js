@@ -11,13 +11,13 @@ import { renderProgress } from "./pages/progress.js";
 import { renderExercises } from "./pages/exercicios.js";
 
 async function showLoginModal() {
+  const email = prompt("Digite seu e-mail:");
+  const senha = prompt("Digite sua senha:");
+  if (!email || !senha) {
+    toast("E-mail e senha são obrigatórios.", "error");
+    return;
+  }
   try {
-    const email = prompt("Digite seu e-mail:");
-    const senha = prompt("Digite sua senha:");
-    if (!email || !senha) {
-      toast("E-mail e senha são obrigatórios.", "error");
-      return;
-    }
     const response = await fetch("/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -26,7 +26,6 @@ async function showLoginModal() {
     const data = await response.json();
     if (response.ok) {
       toast(data.message || "Login bem-sucedido!");
-      // Pequena pausa para o session ser estabelecido, então recarregar
       setTimeout(() => {
         window.location.reload();
       }, 1000);
@@ -40,18 +39,18 @@ async function showLoginModal() {
 }
 
 async function showRegisterModal() {
+  const nome = prompt("Digite seu nome:");
+  const email = prompt("Digite seu e-mail:");
+  const senha = prompt("Digite uma senha (mínimo 6 caracteres):");
+  if (!nome || !email || !senha) {
+    toast("Todos os campos são obrigatórios.", "error");
+    return;
+  }
+  if (senha.length < 6) {
+    toast("A senha deve ter no mínimo 6 caracteres.", "error");
+    return;
+  }
   try {
-    const nome = prompt("Digite seu nome:");
-    const email = prompt("Digite seu e-mail:");
-    const senha = prompt("Digite uma senha (mínimo 6 caracteres):");
-    if (!nome || !email || !senha) {
-      toast("Todos os campos são obrigatórios.", "error");
-      return;
-    }
-    if (senha.length < 6) {
-      toast("A senha deve ter no mínimo 6 caracteres.", "error");
-      return;
-    }
     const response = await fetch("/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -85,7 +84,7 @@ if (needsSetup()) {
   });
 }
 
-// Garantir que o router re-renderize após mudanças de estado
+// Garantir que o router re-renderize quando o estado mudar (ex: login)
 window.addEventListener("storage", (event) => {
   if (event.key === "treinolog_user") {
     render();
