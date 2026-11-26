@@ -17,21 +17,32 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon.svg" />
     <script>
-      // Remove service workers/caches antigos que serviam HTML no lugar de JS.
-      if ("serviceWorker" in navigator) {
+      // Service Worker desativado: ele guardava HTML no lugar de JS e quebrava
+      // o carregamento dos módulos. Aqui limpamos qualquer registro/cache antigo.
+      (function cleanupLegacyServiceWorker() {
+        if (!("serviceWorker" in navigator)) return;
+        const wasControlled = Boolean(navigator.serviceWorker.controller);
+
         navigator.serviceWorker
           .getRegistrations()
           .then((registrations) =>
             Promise.all(registrations.map((registration) => registration.unregister()))
           )
+          .then(() => {
+            if (!window.caches) return null;
+            return window.caches
+              .keys()
+              .then((keys) => Promise.all(keys.map((key) => window.caches.delete(key))));
+          })
+          .then(() => {
+            if (!wasControlled) return;
+            // Recarrega uma única vez para garantir os arquivos novos.
+            if (sessionStorage.getItem("sw-cleanup-done")) return;
+            sessionStorage.setItem("sw-cleanup-done", "1");
+            window.location.reload();
+          })
           .catch(() => {});
-      }
-      if (window.caches) {
-        window.caches
-          .keys()
-          .then((keys) => Promise.all(keys.map((key) => window.caches.delete(key))))
-          .catch(() => {});
-      }
+      })();
     </script>
     <link rel="stylesheet" href="css/app.css?v=3" />
   </head>
