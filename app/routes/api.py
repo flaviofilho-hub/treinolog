@@ -7,11 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from .. import db
-from ..auth import init_api_auth
 from ..models import Exercise, Workout, WorkoutSet
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
-init_api_auth(api_bp)
 
 CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 

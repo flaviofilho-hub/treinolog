@@ -1,3 +1,4 @@
+import hmac
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -142,9 +143,15 @@ def create_app(test_config=None):
         if user_id:
             g.current_user = db.session.get(User, user_id)
         else:
-            # Compatibilidade com testes: X-API-Key = test-key define usuário legado
-            api_key = request.headers.get("X-API-Key")
-            if api_key == "test-key":
+            # Compatibilidade com o modelo antigo de chave compartilhada:
+            # aceita a API_KEY configurada no ambiente ou a chave "test-key".
+            supplied_key = (request.headers.get("X-API-Key") or "").strip()
+            expected_key = app.config.get("API_KEY") or ""
+            legacy_key_ok = bool(supplied_key) and (
+                supplied_key == "test-key"
+                or (expected_key and hmac.compare_digest(supplied_key, expected_key))
+            )
+            if legacy_key_ok:
                 user = User.query.filter_by(email="legacy@teste.com").first()
                 if not user:
                     user = User(nome="Legacy", email="legacy@teste.com")
