@@ -196,6 +196,38 @@ svg {
   white-space: nowrap;
 }
 
+.auth-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.auth-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.auth-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.auth-btn:focus-visible {
+  outline: 2px solid rgba(201, 244, 93, 0.7);
+  outline-offset: 2px;
+}
+
 .page {
   padding: 20px 18px 128px;
 }

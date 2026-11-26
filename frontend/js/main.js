@@ -8,40 +8,58 @@ import { renderNew } from "./pages/new.js";
 import { renderHistory } from "./pages/history.js";
 import { renderDetail } from "./pages/detail.js";
 import { renderProgress } from "./pages/progress.js";
-import { renderExercises } from "./pages/exercises.js";
+import { renderExercises } from "./pages/exercicios.js";
 
-register("/", renderHome);
-register("/novo", renderNew);
-register("/historico", renderHistory);
-register("/treino/:id", renderDetail);
-register("/progresso", renderProgress);
-register("/exercicios", renderExercises);
-
-const indicator = document.getElementById("pending-indicator");
-
-function updatePendingBadge() {
-  const count = pendingCount();
-  indicator.hidden = count === 0;
-  indicator.textContent = `${count} pendente${count === 1 ? "" : "s"}`;
+async function showLoginModal() {
+  const email = prompt("Digite seu e-mail:");
+  const senha = prompt("Digite sua senha:");
+  if (!email || !senha) {
+    toast("E-mail e senha são obrigatórios.");
+    return;
+  }
+  const response = await fetch("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, senha })
+  });
+  const data = await response.json();
+  if (response.ok) {
+    toast(data.message || "Login bem-sucedido!");
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  } else {
+    toast(data.error || "Falha no login.");
+  }
 }
 
-window.addEventListener("pending:changed", updatePendingBadge);
-
-document
-  .getElementById("open-settings")
-  .addEventListener("click", () => openSettingsModal());
-
-window.addEventListener("online", async () => {
-  const result = await syncPending();
-  if (result.synced) {
-    toast(`${result.synced} treino(s) enviado(s).`);
-    updatePendingBadge();
-    render();
+async function showRegisterModal() {
+  const nome = prompt("Digite seu nome:");
+  const email = prompt("Digite seu e-mail:");
+  const senha = prompt("Digite uma senha (mínimo 6 caracteres):");
+  if (!nome || !email || !senha) {
+    toast("Todos os campos são obrigatórios.");
+    return;
   }
-});
-
-startRouter();
-updatePendingBadge();
+  if (senha.length < 6) {
+    toast("A senha deve ter no mínimo 6 caracteres.");
+    return;
+  }
+  const response = await fetch("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome, email, senha })
+  });
+  const data = await response.json();
+  if (response.ok) {
+    toast(data.message || "Registro bem-sucedido!");
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  } else {
+    toast(data.error || "Falha no registro.");
+  }
+}
 
 // No modo web, sempre verificar configuração na inicialização
 if (needsSetup()) {
