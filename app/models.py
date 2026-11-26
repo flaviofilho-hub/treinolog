@@ -13,7 +13,7 @@ def _senha_bytes(senha):
     return senha.encode("utf-8")[:72]
 
 
-WORKOUT_TIPOS = ("forca", "cardio", "misto")
+WORKOUT_TIPOS = ("forca", "cardio")
 LEGACY_EMAIL = "legacy@teste.com"
 
 

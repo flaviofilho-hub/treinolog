@@ -40,10 +40,8 @@ export function workoutCard(workout) {
     : `#/treino/${workout.id}`;
 
   const tipoBadge =
-    tipo === "cardio"
+    isCardio
       ? '<span class="badge badge-cardio">cardio</span>'
-      : tipo === "misto"
-      ? '<span class="badge badge-group">misto</span>'
       : "";
 
   const sub = isCardio

@@ -72,11 +72,6 @@ function metaRow(summary, workout) {
       <span class="meta-pill">${icons.layers} <strong>${summary.series}</strong> séries</span>
       <span class="meta-pill">${icons.weight} <strong>${fmtVolume(summary.volume_kg)}</strong></span>
       <span class="meta-pill">${icons.chart} máx. <strong>${fmtKg(summary.carga_max_kg)}</strong></span>
-      ${
-        tipo === "misto"
-          ? `<span class="meta-pill"><span class="badge badge-group">misto</span></span>`
-          : ""
-      }
     </div>`;
 }
 

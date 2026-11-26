@@ -52,7 +52,6 @@ function formView(initialType) {
           <div class="type-tabs" id="w-type" role="tablist">
             <button type="button" class="type-tab" data-type="forca">Força</button>
             <button type="button" class="type-tab" data-type="cardio">Cardio</button>
-            <button type="button" class="type-tab" data-type="misto">Misto</button>
           </div>
         </div>
         <label class="field">
@@ -64,16 +63,7 @@ function formView(initialType) {
             <option value="Treino B — Inferior"></option>
             <option value="Treino C — Full body"></option>
           </datalist>
-          <datalist id="cardio-names">
-            <option value="Corrida"></option>
-            <option value="Caminhada"></option>
-            <option value="Bicicleta"></option>
-            <option value="Elíptico"></option>
-            <option value="Natação"></option>
-            <option value="Pular corda"></option>
-            <option value="Remo"></option>
-            <option value="Escada"></option>
-          </datalist>
+          <!-- datalist de cardio removido: campos de cardio são globais -->
         </label>
         <div class="grid-2">
           <label class="field">
@@ -130,12 +120,12 @@ function setupForm(initialType) {
 
   let currentType = initialType;
 
-  function applyType(tipo) {
-    currentType = tipo;
-    const isCardio = tipo === "cardio";
+  function applyType(initialType) {
+    currentType = initialType;
+    const isCardio = initialType === "cardio";
 
     typeTabs.forEach((tab) => {
-      const active = tab.dataset.type === tipo;
+      const active = tab.dataset.type === initialType;
       tab.classList.toggle("active", active);
       tab.setAttribute("aria-selected", String(active));
     });
@@ -376,9 +366,6 @@ function setupForm(initialType) {
       observacoes: notes,
       sets,
     };
-    const labels = Object.fromEntries(
-      exercises.map((exercise) => [exercise.id, exercise.nome])
-    );
 
     saveBtn.disabled = true;
     saveBtn.textContent = "Salvando…";

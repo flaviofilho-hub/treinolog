@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: dark;
   --bg: #0a0d12;
   --surface: #12171f;
@@ -1390,7 +1390,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 }
 
-/* ---------- Autenticação ---------- */
+/* ---------- AutenticaÃ§Ã£o ---------- */
 
 .auth-user {
   max-width: 12ch;
@@ -1568,3 +1568,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .cardio-card .btn {
   align-self: flex-start;
 }
+
+
+
+

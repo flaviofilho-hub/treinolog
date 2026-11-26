@@ -182,18 +182,6 @@ def test_cardio_requires_duration(client, auth):
     assert "cardio" in response.get_json()["error"].lower()
 
 
-def test_misto_keeps_sets_and_optional_duration(client, auth, exercise):
-    payload = workout_payload(exercise["id"], client_id="misto-sem-duracao")
-    payload["tipo"] = "misto"
-    payload.pop("duracao_min")
-    response = client.post("/api/treinos", json=payload, headers=auth)
-    assert response.status_code == 201
-    body = response.get_json()
-    assert body["tipo"] == "misto"
-    assert body["duracao_min"] is None
-    assert body["resumo"]["series"] == 3
-
-
 def test_invalid_workout_type_is_rejected(client, auth, exercise):
     payload = workout_payload(exercise["id"], client_id="tipo-invalido")
     payload["tipo"] = "yoga"

@@ -175,7 +175,7 @@ def create_workout():
 
     tipo = (payload.get("tipo") or "").strip().lower() or "forca"
     if tipo not in WORKOUT_TIPOS:
-        return error("Tipo inválido. Use 'forca', 'cardio' ou 'misto'.")
+        return error("Tipo inválido. Use 'forca' ou 'cardio'.")
 
     raw_sets = payload.get("sets")
     if tipo == "cardio":
