@@ -13,7 +13,7 @@ import {
 let exercises = [];
 let exercisesById = {};
 
-export async function renderNew() {
+export async function renderNew({ query } = {}) {
   const app = document.getElementById("app");
   app.innerHTML = `${pageHead()}${loadingList(2)}`;
 
@@ -25,19 +25,13 @@ export async function renderNew() {
     return;
   }
 
-  if (!exercises.length) {
-    app.innerHTML = `${pageHead()}
-      <div class="empty">
-        <div class="empty-icon">${icons.dumbbell}</div>
-        <h3>Cadastre um exercício primeiro</h3>
-        <p>O treino precisa de pelo menos um exercício no catálogo.</p>
-        <a class="btn btn-primary" href="#/exercicios">Cadastrar exercício</a>
-      </div>`;
-    return;
-  }
+  const requested = (query?.get("tipo") || "").toLowerCase();
+  const initialType = ["forca", "cardio", "misto"].includes(requested)
+    ? requested
+    : "forca";
 
-  app.innerHTML = `${pageHead()}${formView()}`;
-  setupForm();
+  app.innerHTML = `${pageHead()}${formView(initialType)}`;
+  setupForm(initialType);
 }
 
 function pageHead() {
@@ -50,9 +44,17 @@ function pageHead() {
     </div>`;
 }
 
-function formView() {
+function formView(initialType) {
   return `<form id="workout-form" class="stack" novalidate>
       <div class="card stack-sm">
+        <div class="field">
+          <span>Tipo de treino</span>
+          <div class="type-tabs" id="w-type" role="tablist">
+            <button type="button" class="type-tab" data-type="forca">Força</button>
+            <button type="button" class="type-tab" data-type="cardio">Cardio</button>
+            <button type="button" class="type-tab" data-type="misto">Misto</button>
+          </div>
+        </div>
         <label class="field">
           <span>Nome do treino</span>
           <input id="w-name" class="input" maxlength="80" list="workout-names"
@@ -61,6 +63,16 @@ function formView() {
             <option value="Treino A — Superior"></option>
             <option value="Treino B — Inferior"></option>
             <option value="Treino C — Full body"></option>
+          </datalist>
+          <datalist id="cardio-names">
+            <option value="Corrida"></option>
+            <option value="Caminhada"></option>
+            <option value="Bicicleta"></option>
+            <option value="Elíptico"></option>
+            <option value="Natação"></option>
+            <option value="Pular corda"></option>
+            <option value="Remo"></option>
+            <option value="Escada"></option>
           </datalist>
         </label>
         <div class="grid-2">
@@ -74,6 +86,9 @@ function formView() {
               inputmode="numeric" placeholder="60" />
           </label>
         </div>
+        <p class="muted tiny is-hidden" id="w-duration-hint">
+          Obrigatório para cardio — conta para a meta de 150 min semanais.
+        </p>
         <label class="field">
           <span>Observações</span>
           <textarea id="w-notes" class="input" rows="2" maxlength="2000"
@@ -89,7 +104,7 @@ function formView() {
 
       <div class="submit-bar card">
         <div class="submit-total">
-          <span class="muted small">Volume estimado</span>
+          <span class="muted small" id="preview-label">Volume estimado</span>
           <strong id="volume-preview">0 kg</strong>
         </div>
         <button type="submit" class="btn btn-primary" id="save-btn">Salvar treino</button>
@@ -99,16 +114,55 @@ function formView() {
     </form>`;
 }
 
-function setupForm() {
+function setupForm(initialType) {
   const form = document.getElementById("workout-form");
   const blocksEl = document.getElementById("blocks");
   const errorEl = document.getElementById("form-error");
   const saveBtn = document.getElementById("save-btn");
   const volumePreview = document.getElementById("volume-preview");
+  const previewLabel = document.getElementById("preview-label");
   const nameInput = document.getElementById("w-name");
   const dateInput = document.getElementById("w-date");
+  const durationInput = document.getElementById("w-duration");
+  const durationHint = document.getElementById("w-duration-hint");
+  const addBlockBtn = document.getElementById("add-block");
+  const typeTabs = [...document.querySelectorAll("#w-type .type-tab")];
+
+  let currentType = initialType;
+
+  function applyType(tipo) {
+    currentType = tipo;
+    const isCardio = tipo === "cardio";
+
+    typeTabs.forEach((tab) => {
+      const active = tab.dataset.type === tipo;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+
+    blocksEl.classList.toggle("is-hidden", isCardio);
+    addBlockBtn.classList.toggle("is-hidden", isCardio);
+    durationHint.classList.toggle("is-hidden", !isCardio);
+    nameInput.setAttribute("list", isCardio ? "cardio-names" : "workout-names");
+    nameInput.placeholder = isCardio
+      ? "Corrida, bicicleta, natação…"
+      : "Treino A — Superior";
+    previewLabel.textContent = isCardio ? "Duração do cardio" : "Volume estimado";
+
+    if (!isCardio && !exercises.length) {
+      blocksEl.innerHTML = `<div class="card muted small">Cadastre um exercício em
+        <a href="#/exercicios">Exercícios</a> para montar um treino de força.</div>`;
+    } else if (!isCardio && !blocksEl.querySelector("[data-block]")) {
+      addBlock(false);
+    }
+
+    updateTotals();
+  }
 
   function addBlock(scroll = true) {
+    if (!exercises.length) {
+      return fail("Cadastre um exercício no catálogo antes de montar um treino de força.");
+    }
     const used = new Set(
       [...blocksEl.querySelectorAll("[data-exercise]")].map((select) =>
         Number(select.value)
@@ -133,6 +187,11 @@ function setupForm() {
   }
 
   function updateTotals() {
+    if (currentType === "cardio") {
+      volumePreview.textContent = `${Number(durationInput.value) || 0} min`;
+      return;
+    }
+
     let total = 0;
     blocksEl.querySelectorAll("[data-block]").forEach((block) => {
       let blockTotal = 0;
@@ -147,6 +206,12 @@ function setupForm() {
     });
     volumePreview.textContent = fmtVolume(total);
   }
+
+  document.getElementById("w-type").addEventListener("click", (event) => {
+    const tab = event.target.closest(".type-tab");
+    if (!tab) return;
+    applyType(tab.dataset.type);
+  });
 
   document
     .getElementById("add-block")
@@ -212,9 +277,13 @@ function setupForm() {
 
     const name = nameInput.value.trim();
     const date = dateInput.value;
-    const durationValue = document.getElementById("w-duration").value;
+    const durationValue = durationInput.value;
     const notes = document.getElementById("w-notes").value.trim();
-    const blocks = [...blocksEl.querySelectorAll("[data-block]")];
+    const tipo = currentType;
+    const needsSets = tipo !== "cardio";
+    const blocks = needsSets
+      ? [...blocksEl.querySelectorAll("[data-block]")]
+      : [];
 
     if (!name) {
       return fail(
@@ -225,9 +294,6 @@ function setupForm() {
     if (!date) {
       return fail("Informe a data do treino.", dateInput);
     }
-    if (!blocks.length) {
-      return fail("Adicione pelo menos um exercício.");
-    }
 
     let duration = null;
     if (durationValue !== "") {
@@ -235,9 +301,18 @@ function setupForm() {
       if (!Number.isInteger(duration) || duration < 0 || duration > 1440) {
         return fail(
           "A duração deve estar entre 0 e 1440 minutos.",
-          document.getElementById("w-duration")
+          durationInput
         );
       }
+    }
+    if (tipo === "cardio" && (duration === null || duration <= 0)) {
+      return fail(
+        "Informe a duração do cardio em minutos.",
+        durationInput
+      );
+    }
+    if (needsSets && !blocks.length) {
+      return fail("Adicione pelo menos um exercício.");
     }
 
     const sets = [];
@@ -296,6 +371,7 @@ function setupForm() {
       client_id: uuid(),
       data: date,
       nome: name,
+      tipo,
       duracao_min: duration,
       observacoes: notes,
       sets,
@@ -329,7 +405,7 @@ function setupForm() {
     }
   });
 
-  addBlock(false);
+  applyType(initialType);
 }
 
 function createBlock(selectedId) {

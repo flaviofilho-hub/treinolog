@@ -5,6 +5,7 @@ import {
   fmtDate,
   fmtKg,
   fmtNumber,
+  fmtShortDate,
   fmtVolume,
   icons,
   loadingList,
@@ -132,9 +133,43 @@ function view(stats, muscleStats, pending) {
         <div class="stat-value">${fmtVolume(stats.volume_total_kg)}</div>
       </div>
     </div>
+    ${cardioCard(stats.cardio)}
     ${muscleSection}
     ${recent}
     ${records}`;
+}
+
+function cardioCard(cardio) {
+  const meta = Number(cardio?.meta_min || 150);
+  const done = Number(cardio?.semana_min || 0);
+  const pct = meta > 0 ? Math.min(100, Math.round((done / meta) * 100)) : 0;
+  const missing = Math.max(0, meta - done);
+  const reached = done >= meta;
+  const start = cardio?.semana_inicio ? fmtShortDate(cardio.semana_inicio) : "";
+
+  return `<div class="card cardio-card">
+      <div class="cardio-head">
+        <div>
+          <p class="eyebrow">Recomendação semanal</p>
+          <h2>Cardio</h2>
+        </div>
+        <span class="badge ${reached ? "badge-success" : "badge-group"}">
+          ${reached ? "meta atingida" : `${missing} min restantes`}
+        </span>
+      </div>
+      <div class="cardio-values">
+        <strong>${fmtNumber(done)} min</strong>
+        <span class="muted small">de ${fmtNumber(meta)} min</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="muscle-meta">
+        <span>${pct}% da meta</span>
+        ${start ? `<span>Semana de ${start}</span>` : ""}
+      </div>
+      <a class="btn btn-ghost btn-sm" href="#/novo?tipo=cardio">${icons.plus} Registrar cardio</a>
+    </div>`;
 }
 
 function offlineBanner(message) {

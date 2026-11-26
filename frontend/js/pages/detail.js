@@ -50,6 +50,19 @@ function backLink() {
 }
 
 function metaRow(summary, workout) {
+  const tipo = workout.tipo || "forca";
+
+  if (tipo === "cardio") {
+    return `<div class="meta-row">
+        ${
+          workout.duracao_min != null
+            ? `<span class="meta-pill">${icons.clock} <strong>${workout.duracao_min} min</strong></span>`
+            : ""
+        }
+        <span class="meta-pill"><span class="badge badge-cardio">cardio</span></span>
+      </div>`;
+  }
+
   return `<div class="meta-row">
       ${
         workout.duracao_min != null
@@ -59,7 +72,25 @@ function metaRow(summary, workout) {
       <span class="meta-pill">${icons.layers} <strong>${summary.series}</strong> séries</span>
       <span class="meta-pill">${icons.weight} <strong>${fmtVolume(summary.volume_kg)}</strong></span>
       <span class="meta-pill">${icons.chart} máx. <strong>${fmtKg(summary.carga_max_kg)}</strong></span>
+      ${
+        tipo === "misto"
+          ? `<span class="meta-pill"><span class="badge badge-group">misto</span></span>`
+          : ""
+      }
     </div>`;
+}
+
+function cardioSection(workout) {
+  return `<section class="card exercise-section">
+      <div class="exercise-section-head">
+        <h3>${esc(workout.nome)}</h3>
+        <span class="badge badge-cardio">cardio</span>
+      </div>
+      <p class="muted" style="margin-top:10px">
+        <strong style="font-size:1.35rem;color:var(--text)">${workout.duracao_min || 0} min</strong>
+        de atividade aeróbica.
+      </p>
+    </section>`;
 }
 
 function exerciseSection(group) {
@@ -100,7 +131,11 @@ function renderWorkout(app, workout) {
     </div>
 
     <div class="stack">
-      ${(workout.exercicios || []).map(exerciseSection).join("")}
+      ${
+        (workout.tipo || "forca") === "cardio"
+          ? cardioSection(workout)
+          : (workout.exercicios || []).map(exerciseSection).join("")
+      }
     </div>
 
     ${
@@ -169,6 +204,7 @@ function renderPendingDetail(app, item) {
     }
 
     <div class="stack">
+      ${item.tipo === "cardio" ? cardioSection(item) : ""}
       ${[...groups.values()]
         .map(
           (group) => `<section class="card exercise-section">

@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func
@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from .. import db
-from ..models import Exercise, Workout, WorkoutSet
+from ..models import WORKOUT_TIPOS, Exercise, Workout, WorkoutSet
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -143,6 +143,10 @@ def create_workout():
     if client_id:
         existing = Workout.query.filter_by(client_id=client_id).first()
         if existing:
+            # Idempotência só vale para o mesmo usuário: nunca revelar (nem
+            # sobrescrever) o treino de outra conta que use o mesmo client_id.
+            if existing.user_id != g.current_user.id:
+                return error("client_id já utilizado.", 409)
             return jsonify(existing.to_dict()), 200
 
     try:
@@ -169,11 +173,21 @@ def create_workout():
     if observacoes and len(observacoes) > 2000:
         return error("As observações devem ter no máximo 2000 caracteres.")
 
+    tipo = (payload.get("tipo") or "").strip().lower() or "forca"
+    if tipo not in WORKOUT_TIPOS:
+        return error("Tipo inválido. Use 'forca', 'cardio' ou 'misto'.")
+
     raw_sets = payload.get("sets")
-    if not isinstance(raw_sets, list) or not raw_sets:
-        return error("Adicione pelo menos uma série.")
-    if len(raw_sets) > 300:
-        return error("Máximo de 300 séries por treino.")
+    if tipo == "cardio":
+        # Cardio é medido em minutos; séries não se aplicam.
+        if duracao is None or duracao <= 0:
+            return error("Informe a duração do cardio em minutos.")
+        raw_sets = []
+    else:
+        if not isinstance(raw_sets, list) or not raw_sets:
+            return error("Adicione pelo menos uma série.")
+        if len(raw_sets) > 300:
+            return error("Máximo de 300 séries por treino.")
 
     exercise_ids = set()
     for index, raw in enumerate(raw_sets, start=1):
@@ -200,6 +214,7 @@ def create_workout():
         client_id=client_id,
         data=data,
         nome=nome,
+        tipo=tipo,
         duracao_min=duracao,
         observacoes=observacoes,
     )
@@ -326,12 +341,30 @@ def stats():
         .all()
     )
 
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+    cardio_semana = (
+        db.session.query(func.coalesce(func.sum(Workout.duracao_min), 0))
+        .filter(user_filter)
+        .filter(Workout.tipo == "cardio")
+        .filter(Workout.data >= week_start)
+        .filter(Workout.data <= week_end)
+        .scalar()
+    ) or 0
+
     return jsonify(
         {
             "total_treinos": int(total_workouts),
             "total_series": int(totals[0] or 0),
             "total_reps": int(totals[1] or 0),
             "volume_total_kg": round(float(totals[2] or 0), 1),
+            "cardio": {
+                "semana_min": int(cardio_semana),
+                "meta_min": 150,
+                "semana_inicio": week_start.isoformat(),
+                "semana_fim": week_end.isoformat(),
+            },
             "ultimos": [
                 workout.to_dict() for workout in ultimos
             ],

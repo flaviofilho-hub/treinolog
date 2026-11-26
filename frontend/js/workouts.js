@@ -33,9 +33,28 @@ export function exerciseCountOf(workout) {
 export function workoutCard(workout) {
   const pending = !workout.id;
   const summary = summaryOf(workout);
+  const tipo = workout.tipo || "forca";
+  const isCardio = tipo === "cardio";
   const href = pending
     ? `#/treino/${encodeURIComponent(workout.client_id)}`
     : `#/treino/${workout.id}`;
+
+  const tipoBadge =
+    tipo === "cardio"
+      ? '<span class="badge badge-cardio">cardio</span>'
+      : tipo === "misto"
+      ? '<span class="badge badge-group">misto</span>'
+      : "";
+
+  const sub = isCardio
+    ? `${workout.duracao_min || 0} min de cardio`
+    : `${plural(exerciseCountOf(workout), "exercício", "exercícios")} ·
+       ${plural(summary.series, "série", "séries")} ·
+       ${fmtVolume(summary.volume_kg)}`;
+
+  const meta = isCardio
+    ? `<strong>${workout.duracao_min || 0} min</strong><span>duração</span>`
+    : `<strong>${fmtKg(summary.carga_max_kg)}</strong><span>carga máx.</span>`;
 
   return `<a class="workout-item" href="${href}">
       <span class="date-badge">
@@ -46,16 +65,10 @@ export function workoutCard(workout) {
         <span class="workout-title">
           ${esc(workout.nome)}
           ${pending ? '<span class="badge badge-pending">pendente</span>' : ""}
+          ${tipoBadge}
         </span>
-        <span class="workout-sub">
-          ${plural(exerciseCountOf(workout), "exercício", "exercícios")} ·
-          ${plural(summary.series, "série", "séries")} ·
-          ${fmtVolume(summary.volume_kg)}
-        </span>
+        <span class="workout-sub">${sub}</span>
       </span>
-      <span class="workout-meta">
-        <strong>${fmtKg(summary.carga_max_kg)}</strong>
-        <span>carga máx.</span>
-      </span>
+      <span class="workout-meta">${meta}</span>
     </a>`;
 }

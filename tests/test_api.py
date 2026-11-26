@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+
 def workout_payload(exercise_id, client_id="test-client-1"):
     return {
         "client_id": client_id,
@@ -37,6 +40,7 @@ def test_create_workout_and_fetch(client, auth, exercise):
     created = response.get_json()
 
     assert created["nome"] == "Treino A - Superior"
+    assert created["tipo"] == "forca"
     assert created["resumo"] == {
         "series": 3,
         "reps": 22,
@@ -143,3 +147,86 @@ def test_stats_and_delete(client, auth, exercise):
     response = client.delete(f"/api/treinos/{created['id']}", headers=auth)
     assert response.status_code == 204
     assert client.get(f"/api/treinos/{created['id']}", headers=auth).status_code == 404
+
+
+def cardio_payload(minutes=45, data=None, client_id="cardio-client-1"):
+    payload = {
+        "client_id": client_id,
+        "data": data or date.today().isoformat(),
+        "nome": "Corrida",
+        "tipo": "cardio",
+        "duracao_min": minutes,
+        "observacoes": "",
+        "sets": [],
+    }
+    return payload
+
+
+def test_create_cardio_without_sets(client, auth):
+    response = client.post(
+        "/api/treinos", json=cardio_payload(45), headers=auth
+    )
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["tipo"] == "cardio"
+    assert body["duracao_min"] == 45
+    assert body["resumo"]["series"] == 0
+    assert body["exercicios"] == []
+
+
+def test_cardio_requires_duration(client, auth):
+    payload = cardio_payload(client_id="cardio-sem-duracao")
+    payload.pop("duracao_min")
+    response = client.post("/api/treinos", json=payload, headers=auth)
+    assert response.status_code == 400
+    assert "cardio" in response.get_json()["error"].lower()
+
+
+def test_misto_keeps_sets_and_optional_duration(client, auth, exercise):
+    payload = workout_payload(exercise["id"], client_id="misto-sem-duracao")
+    payload["tipo"] = "misto"
+    payload.pop("duracao_min")
+    response = client.post("/api/treinos", json=payload, headers=auth)
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["tipo"] == "misto"
+    assert body["duracao_min"] is None
+    assert body["resumo"]["series"] == 3
+
+
+def test_invalid_workout_type_is_rejected(client, auth, exercise):
+    payload = workout_payload(exercise["id"], client_id="tipo-invalido")
+    payload["tipo"] = "yoga"
+    response = client.post("/api/treinos", json=payload, headers=auth)
+    assert response.status_code == 400
+    assert "tipo" in response.get_json()["error"].lower()
+
+
+def test_weekly_cardio_stats_ignore_old_workouts(client, auth):
+    today = date.today()
+    this_week = today - timedelta(days=today.weekday())
+    old_day = this_week - timedelta(days=1)
+
+    assert (
+        client.post(
+            "/api/treinos",
+            json=cardio_payload(45, today.isoformat(), "cardio-hoje"),
+            headers=auth,
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/treinos",
+            json=cardio_payload(90, old_day.isoformat(), "cardio-semana-passada"),
+            headers=auth,
+        ).status_code
+        == 201
+    )
+
+    stats = client.get("/api/estatisticas", headers=auth).get_json()
+    assert stats["cardio"]["semana_min"] == 45
+    assert stats["cardio"]["meta_min"] == 150
+    assert stats["cardio"]["semana_inicio"] == this_week.isoformat()
+    assert stats["total_treinos"] == 2
+

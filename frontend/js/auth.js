@@ -128,7 +128,7 @@ export function renderAuthGate(container, { mode = "login" } = {}) {
           <label class="field">
             <span>Senha</span>
             <input class="input" name="senha" type="password"
-              autocomplete="current-password" placeholder="Mínimo 6 caracteres" required />
+              autocomplete="current-password" placeholder="Mínimo 8 caracteres" required />
           </label>
           <div class="form-error" id="auth-error" hidden></div>
           <button type="submit" class="btn btn-primary btn-block" id="auth-submit">Entrar</button>
@@ -193,8 +193,8 @@ export function renderAuthGate(container, { mode = "login" } = {}) {
       showError("Informe a sua senha.");
       return;
     }
-    if (currentMode === "register" && senha.length < 6) {
-      showError("A senha deve ter pelo menos 6 caracteres.");
+    if (currentMode === "register" && senha.length < 8) {
+      showError("A senha deve ter pelo menos 8 caracteres.");
       return;
     }
 

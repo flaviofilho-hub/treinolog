@@ -13,6 +13,10 @@ def _senha_bytes(senha):
     return senha.encode("utf-8")[:72]
 
 
+WORKOUT_TIPOS = ("forca", "cardio", "misto")
+LEGACY_EMAIL = "legacy@teste.com"
+
+
 class User(db.Model):
     __tablename__ = "user"
 
@@ -66,6 +70,7 @@ class Workout(db.Model):
     nome = db.Column(db.String(80), nullable=False)
     duracao_min = db.Column(db.Integer, nullable=True)
     observacoes = db.Column(db.Text, nullable=True)
+    tipo = db.Column(db.String(20), nullable=True)  # forca | cardio | misto
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
     sets = db.relationship(
@@ -92,12 +97,18 @@ class Workout(db.Model):
     def carga_max_kg(self):
         return round(max((item.carga_kg for item in self.sets), default=0.0), 1)
 
+    @property
+    def tipo_efetivo(self):
+        """Treinos antigos (sem tipo) são de força."""
+        return self.tipo or "forca"
+
     def to_dict(self, include_sets=True):
         payload = {
             "id": self.id,
             "client_id": self.client_id,
             "data": self.data.isoformat(),
             "nome": self.nome,
+            "tipo": self.tipo_efetivo,
             "duracao_min": self.duracao_min,
             "observacoes": self.observacoes or "",
             "created_at": self.created_at.isoformat() if self.created_at else None,
